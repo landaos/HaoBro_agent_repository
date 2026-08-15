@@ -1,0 +1,23 @@
+﻿collection_name: rag_collection
+persist_directory: src/data/chromadb
+k: 5
+data_path: src/data/knowledge_base
+md5_hex_store: src/data/md5_hex_store/md5_hex_store.txt
+allow_knowledge_file_types:
+  - txt
+  - pdf
+  - md
+  - pptx
+  - docx
+chunk_size: 200
+chunk_overlap: 20
+separators:
+  - "\n\n"
+  - "\n"
+  - "。"
+  - "！"
+  - "？"
+  - "!"
+  - "?"
+  - " "
+  - ""

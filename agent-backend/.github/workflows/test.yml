@@ -1,0 +1,67 @@
+# ============================================
+# test.yml - CI 持续集成工作流
+# ============================================
+#
+# ═══════════════════════════════════════════
+# 需要在此文件中编写的配置：
+# ═══════════════════════════════════════════
+#
+# 1. 基本配置：
+#    name: CI
+#    on: [push, pull_request]  # push 和 PR 时触发
+#
+# 2. 作业 - test（在 GitHub Actions 的 ubuntu-latest 上运行）：
+#    jobs:
+#      test:
+#        runs-on: ubuntu-latest
+#        services:
+#          postgres:
+#            image: pgvector/pgvector:pg17
+#            env:
+#              POSTGRES_DB: agent_test
+#              POSTGRES_USER: test_user
+#              POSTGRES_PASSWORD: test_pass
+#            ports: ["5432:5432"]
+#            options: >-
+#              --health-cmd pg_isready
+#              --health-interval 10s
+#              --health-retries 5
+#          redis:
+#            image: redis:7-alpine
+#            ports: ["6379:6379"]
+#
+#        steps:
+#          - uses: actions/checkout@v4
+#          - uses: actions/setup-python@v5
+#            with:
+#              python-version: "3.12"
+#          - name: Install dependencies
+#            run: |
+#              pip install -e ".[dev]"
+#          - name: Lint
+#            run: |
+#              pip install ruff
+#              ruff check src/
+#          - name: Test
+#            env:
+#              DB_HOST: localhost
+#              DB_PORT: 5432
+#              DB_NAME: agent_test
+#              DB_USER: test_user
+#              DB_PASSWORD: test_pass
+#              REDIS_HOST: localhost
+#              REDIS_PORT: 6379
+#            run: |
+#              pytest tests/ -v --cov=src --cov-report=term-missing
+#
+# ═══════════════════════════════════════════
+# 依赖：需要在 pyproject.toml 中添加 dev 依赖
+# [project.optional-dependencies]
+# dev = [
+#     "pytest>=8.0",
+#     "pytest-asyncio>=0.24",
+#     "pytest-cov>=5.0",
+#     "ruff>=0.6",
+#     "httpx>=0.28",
+# ]
+# ═══════════════════════════════════════════

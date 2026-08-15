@@ -1,0 +1,32 @@
+# ============================================
+# docker-compose.yml - 本地开发环境
+# ============================================
+#
+# ═══════════════════════════════════════════
+# 需要在此文件中编写的部分：
+# ═══════════════════════════════════════════
+#
+# 1. services.postgres:
+#    - image: pgvector/pgvector:pg17（自带 pgvector 插件的 PostgreSQL）
+#    - environment:
+#        POSTGRES_DB: agent_db
+#        POSTGRES_USER: agent_user
+#        POSTGRES_PASSWORD: agent_pass
+#    - ports: "5432:5432"
+#    - volumes: pgdata 持久化卷
+#    - healthcheck: pg_isready 检测
+#
+# 2. services.redis:
+#    - image: redis:7-alpine
+#    - ports: "6379:6379"
+#    - volumes: redisdata 持久化卷
+#    - command: redis-server --requirepass ""（开发环境可无密码）
+#
+# 3. volumes:
+#    - pgdata
+#    - redisdata
+#
+# ═══════════════════════════════════════════
+# 启动方式：
+#   docker compose up -d
+# ═══════════════════════════════════════════

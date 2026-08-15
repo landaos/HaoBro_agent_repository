@@ -1,0 +1,45 @@
+# ============================================
+# .pre-commit-config.yaml - Git 预提交钩子
+# ============================================
+#
+# ═══════════════════════════════════════════
+# 需要在此文件中编写的配置：
+# ═══════════════════════════════════════════
+#
+# 1. 仓库与钩子配置：
+#    repos:
+#      - repo: https://github.com/astral-sh/ruff-pre-commit
+#        rev: v0.9.0  # 使用最新版本
+#        hooks:
+#          - id: ruff                          # 代码检查
+#            args: [--fix, --exit-non-zero-on-fix]
+#          - id: ruff-format                   # 代码格式化
+#
+#      - repo: https://github.com/pre-commit/pre-commit-hooks
+#        rev: v5.0.0
+#        hooks:
+#          - id: trailing-whitespace           # 去除行尾空格
+#          - id: end-of-file-fixer             # 文件末尾空行
+#          - id: check-yaml                    # YAML 语法检查
+#          - id: check-added-large-files       # 防止大文件提交
+#            args: ["--maxkb=500"]
+#          - id: check-json                    # JSON 语法检查
+#          - id: check-toml                    # TOML 语法检查
+#          - id: detect-private-key            # 检测私钥提交
+#
+# 2. 针对 Python 的额外检查（可选）：
+#      - repo: https://github.com/pre-commit/mirrors-mypy
+#        rev: v1.13.0
+#        hooks:
+#          - id: mypy                          # 类型检查
+#            additional_dependencies: [types-all]
+#            args: ["--ignore-missing-imports"]
+#
+# ═══════════════════════════════════════════
+# 安装方式：
+#   pip install pre-commit
+#   pre-commit install
+#
+# 之后每次 git commit 会自动运行上述检查，
+# 检查不通过则 commit 失败
+# ═══════════════════════════════════════════

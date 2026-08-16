@@ -76,8 +76,19 @@ async def process_document(
         logger.warning(f"【文档处理】分块为空 | {file_path}")
         return {"chunk_count": 0}
 
-    # 4. 入库
+    # 4. 入库（embedding 调用阿里云接口偶发网络抖动，失败自动重试）
     import asyncio
-    await asyncio.to_thread(vector_store.vectors_store.add_documents, split_docs)
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            await asyncio.to_thread(vector_store.vector_store.add_documents, split_docs)
+            break
+        except Exception as e:
+            if attempt == max_retries:
+                logger.error(f"【文档处理】入库失败（已重试 {max_retries} 次） | doc_id={doc_id}, error={e}")
+                raise
+            logger.warning(f"【文档处理】入库失败，第 {attempt} 次重试 | doc_id={doc_id}, error={e}")
+            await asyncio.sleep(2 * attempt)
+
     logger.info(f"【文档处理】成功 | doc_id={doc_id}, kb_id={kb_id}, chunks={len(split_docs)}")
     return {"chunk_count": len(split_docs)}

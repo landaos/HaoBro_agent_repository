@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, LogIn, Sparkles } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { Eye, EyeOff, LogIn } from 'lucide-react'
 import { authApi } from '../api/auth'
 import { useUserStore } from '../stores/useUserStore'
+import logoImg from '/assets/images/logo.png'
 
 export default function Login() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const login = useUserStore((s) => s.login)
   const [username, setUsername] = useState('')
@@ -16,7 +19,7 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!username || !password) {
-      setError('请输入用户名和密码')
+      setError(t('auth.fillUsernameAndPassword'))
       return
     }
     setLoading(true)
@@ -27,7 +30,7 @@ export default function Login() {
       navigate('/chat')
     } catch (err: unknown) {
       const detail = (err as { detail?: string })?.detail
-      setError(detail || '登录失败，请检查用户名和密码')
+      setError(detail || t('auth.loginFailed'))
     } finally {
       setLoading(false)
     }
@@ -36,40 +39,42 @@ export default function Login() {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <div className="mx-auto w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center mb-3">
-          <Sparkles size={22} className="text-white" />
-        </div>
-        <h1 className="text-xl font-bold text-[var(--color-text)]">小易问答助手</h1>
-        <p className="mt-1 text-sm text-[var(--color-text-tertiary)]">登录你的账号</p>
+        <img
+          src={logoImg}
+          alt="小艺问答助手"
+          className="mx-auto w-16 h-16 rounded-xl object-cover shadow-md mb-3"
+        />
+        <h1 className="text-xl font-bold text-[var(--color-text)]">{t('app.name')}</h1>
+        <p className="mt-1 text-sm text-[var(--color-text-tertiary)]">{t('auth.loginTitle')}</p>
       </div>
 
       <form onSubmit={handleLogin} className="space-y-4">
         {error && (
-          <div className="px-4 py-2.5 rounded-lg text-sm bg-red-50 text-red-600 border border-red-200">
+          <div className="px-4 py-2.5 rounded-lg text-sm bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800">
             {error}
           </div>
         )}
 
         <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-[var(--color-text)]">用户名</label>
+          <label className="block text-sm font-medium text-[var(--color-text)]">{t('auth.username')}</label>
           <input
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-placeholder)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent transition-all"
-            placeholder="输入用户名"
+            className="w-full px-4 py-2.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-placeholder)] focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-transparent transition-all"
+            placeholder={t('auth.usernamePlaceholder')}
           />
         </div>
 
         <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-[var(--color-text)]">密码</label>
+          <label className="block text-sm font-medium text-[var(--color-text)]">{t('auth.password')}</label>
           <div className="relative">
             <input
               type={showPwd ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2.5 pr-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-placeholder)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent transition-all"
-              placeholder="输入密码"
+              className="w-full px-4 py-2.5 pr-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-placeholder)] focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-transparent transition-all"
+              placeholder={t('auth.passwordPlaceholder')}
             />
             <button
               type="button"
@@ -84,21 +89,21 @@ export default function Login() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-medium hover:from-blue-600 hover:to-indigo-700 disabled:opacity-50 transition-all"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-rose-400 to-pink-500 text-white text-sm font-medium hover:from-rose-500 hover:to-pink-600 disabled:opacity-50 transition-all shadow-md shadow-rose-200"
         >
           {loading ? (
             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
           ) : (
             <LogIn size={16} />
           )}
-          登录
+          {t('auth.login')}
         </button>
       </form>
 
       <p className="text-center text-sm text-[var(--color-text-tertiary)]">
-        还没有账号？{' '}
-        <Link to="/register" className="text-blue-600 hover:underline font-medium">
-          立即注册
+        {t('auth.noAccount')}{' '}
+        <Link to="/register" className="text-rose-500 hover:underline font-medium">
+          {t('auth.toRegister')}
         </Link>
       </p>
     </div>

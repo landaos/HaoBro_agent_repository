@@ -37,13 +37,6 @@ async def create_knowledge_base(
     db: AsyncSession = Depends(get_db),
 ):
     """创建知识库"""
-    # 每个用户只允许一个知识库
-    existing = await db.execute(
-        select(KnowledgeBase).where(KnowledgeBase.user_id == user_id)
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="每个用户只能创建一个知识库")
-
     kb = KnowledgeBase(
         user_id=user_id,
         name=req.name,

@@ -19,8 +19,14 @@
   --color-text-tertiary: #94A3B8;
   --color-text-placeholder: #94A3B8;
   --color-border: #E2E8F0;
-  --color-accent: #3B82F6;
-  --color-accent-bg: #EFF6FF;
+  --color-accent: #E85D75;
+  --color-accent-bg: #FEF2F4;
+  --color-danger: #9F2F2D;
+  --color-danger-bg: #FDEBEC;
+  --color-success: #346538;
+  --color-success-bg: #EDF3EC;
+  --color-warning: #956400;
+  --color-warning-bg: #FBF3DB;
 }
 
 .dark {
@@ -34,8 +40,14 @@
   --color-text-tertiary: #707070;
   --color-text-placeholder: #707070;
   --color-border: #3A3A3A;
-  --color-accent: #4A9ED6;
-  --color-accent-bg: #1A2E3E;
+  --color-accent: #F4728C;
+  --color-accent-bg: #2E1E24;
+  --color-danger: #EF4444;
+  --color-danger-bg: #3B1517;
+  --color-success: #4ADE80;
+  --color-success-bg: #0F2F1A;
+  --color-warning: #FBBF24;
+  --color-warning-bg: #3B2F0A;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -76,9 +88,9 @@ body {
 .markdown-body p { margin: 0.5em 0; line-height: 1.7; }
 .markdown-body ul, .markdown-body ol { padding-left: 1.5em; }
 .markdown-body li { margin: 0.3em 0; }
-.markdown-body blockquote { border-left: 3px solid #3b82f6; padding-left: 1em; color: #64748b; margin: 1em 0; }
+.markdown-body blockquote { border-left: 3px solid #e85d75; padding-left: 1em; color: #64748b; margin: 1em 0; }
 .markdown-body img { max-width: 100%; border-radius: 8px; }
-.markdown-body a { color: #3b82f6; text-decoration: underline; }
+.markdown-body a { color: #e85d75; text-decoration: underline; }
 
 .markdown-body pre {
   background: #0d1117;
@@ -125,6 +137,16 @@ body {
 .markdown-body .hljs-punctuation { color: #e1e4e8; }
 .markdown-body .hljs-deletion { color: #ff7b72; }
 
+/* Dark mode markdown overrides */
+.dark .markdown-body :not(pre) > code {
+  background: #374151;
+  color: #6ee7b7;
+}
+.dark .markdown-body blockquote {
+  color: #9ca3af;
+  border-left-color: #f4728c;
+}
+
 /* ==== Tiptap Editor overrides ==== */
 
 .tiptap-wrapper {
@@ -153,7 +175,7 @@ body {
 .tiptap-wrapper .ProseMirror ul, .tiptap-wrapper .ProseMirror ol { padding-left: 1.5em; }
 .tiptap-wrapper .ProseMirror li { margin: 0.25em 0; }
 .tiptap-wrapper .ProseMirror img { max-width: 100%; height: auto; border-radius: 8px; }
-.tiptap-wrapper .ProseMirror a { color: #3b82f6; text-decoration: underline; cursor: pointer; }
+.tiptap-wrapper .ProseMirror a { color: #e85d75; text-decoration: underline; cursor: pointer; }
 .tiptap-wrapper .ProseMirror hr { border: none; border-top: 1px solid #e2e8f0; margin: 1.5em 0; }
 
 /* Placeholder */

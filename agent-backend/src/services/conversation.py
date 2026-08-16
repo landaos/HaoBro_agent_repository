@@ -1,3 +1,4 @@
+import asyncio
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain.chat_models import init_chat_model
@@ -66,12 +67,21 @@ async def create_conversation(
     如果 AI 标题生成失败（API 限流、网络异常等），使用用户输入的前 20 字作为后备标题，
     确保会话总能被保存，不阻塞前端流程。
     """
-    try:
-        chain = _get_title_chain()
-        response = await chain.ainvoke({"input": user_input})
-        title = response.content.strip()
-    except Exception as e:
-        logger.warning(f"【会话】标题生成失败，使用后备标题 | {e}")
+    title = None
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            chain = _get_title_chain()
+            response = await chain.ainvoke({"input": user_input})
+            title = response.content.strip()
+            break
+        except Exception as e:
+            if attempt < max_retries:
+                logger.warning(f"【会话】标题生成失败(第{attempt}次重试)，等待 {2*attempt}s 后重试 | {e}")
+                await asyncio.sleep(2 * attempt)
+            else:
+                logger.warning(f"【会话】标题生成失败(重试{max_retries}次均失败)，使用后备标题 | {e}")
+    if not title:
         title = (user_input or "新会话")[:20]
 
     conversation = Conversation(

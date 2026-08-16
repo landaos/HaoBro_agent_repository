@@ -8,18 +8,26 @@ from langchain_classic.retrievers import EnsembleRetriever
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-
 import aiofiles
 from aiofiles import os as aio_os
 
-from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from src.core.rag.text_spliter import  AsyncTextSplitter
-from src.configs.config_loader import chroma_config
+from src.core.rag.text_spliter import AsyncTextSplitter
+from src.configs.config_loader import vector_store_config
 from src.core.agent.factory import embed_model
-from src.core.rag.document_loader import  pdf_loader, txt_loader, listdir_allowed_type, get_file_md5_hex, markdown_loader, \
-    ppt_loader, word_loader, get_project_root
+from src.core.rag.document_loader import (
+    pdf_loader, txt_loader, listdir_allowed_type, get_file_md5_hex,
+    markdown_loader, ppt_loader, word_loader, get_project_root
+)
 from src.logger.logger import logger
+
+# ============================================================
+# PGVector 导入
+# ============================================================
+from langchain_postgres import PGVector
+from src.config import settings
+from sqlalchemy import and_, select, func, delete as sa_delete
+
 
 def get_abstract_path(relative_path: str) -> str:
     """
@@ -28,47 +36,101 @@ def get_abstract_path(relative_path: str) -> str:
     :return: 绝对路径
     """
     project_path = get_project_root()
-    # 确保路径格式正确，处理不同操作系统的路径分隔符
     abstract_path = os.path.normpath(os.path.join(project_path, relative_path))
     return abstract_path
 
+
 class VectorStoreService:
     def __init__(self):
-        persist_dir=get_abstract_path(chroma_config['persist_directory'])
-        self.vectors_store = Chroma(
-            collection_name=chroma_config['collection_name'],
-            embedding_function=embed_model,
-            persist_directory=persist_dir,
-        )     
-        self.spliter=AsyncTextSplitter(
-            chunk_size=chroma_config['chunk_size'],
-            chunk_overlap=chroma_config['chunk_overlap'],
-            separators=chroma_config['separators'],
+        # ============================================================
+        # PGVector 初始化（替代 Chroma）
+        # ============================================================
+        self.config = vector_store_config
+        self.vector_store = PGVector(
+            embeddings=embed_model,
+            collection_name=self.config['collection_name'],
+            connection=settings.pgvector_url,
+            use_jsonb=True,
+        )
+        self.spliter = AsyncTextSplitter(
+            chunk_size=self.config['chunk_size'],
+            chunk_overlap=self.config['chunk_overlap'],
+            separators=self.config['separators'],
             embedding_model=embed_model
         )
 
-    async def get_bm25_retriever(self, user_id: str | None = None):
-        """构建 BM25 关键词检索器，支持按 user_id 过滤"""
+    # ── 原 Chroma 初始化代码（已注释） ──────────────────────────
+    # def __init__(self):
+    #     persist_dir = get_abstract_path(chroma_config['persist_directory'])
+    #     self.vectors_store = Chroma(
+    #         collection_name=chroma_config['collection_name'],
+    #         embedding_function=embed_model,
+    #         persist_directory=persist_dir,
+    #     )
+    #     self.spliter = AsyncTextSplitter(...)
+
+    # ============================================================
+    # 过滤条件构建器
+    # ============================================================
+    def _build_filter(self, user_id=None, kb_id=None, doc_id=None):
+        """构建 SQLAlchemy 过滤条件（cmetadata 是 JSONB 列）"""
+        collection = self.vector_store.EmbeddingStore
+        conditions = []
+        if user_id:
+            conditions.append(collection.cmetadata['user_id'].astext == str(user_id))
+        if kb_id is not None:
+            conditions.append(collection.cmetadata['kb_id'].astext == str(kb_id))
+        if doc_id is not None:
+            conditions.append(collection.cmetadata['doc_id'].astext == str(doc_id))
+        return and_(*conditions) if conditions else None
+
+    # ============================================================
+    # BM25 关键词检索器
+    # ============================================================
+    async def get_bm25_retriever(self, user_id: str | None = None, kb_id: int | None = None):
+        """构建 BM25 关键词检索器，支持按 user_id 和 kb_id 过滤"""
         all_docs = []
 
         if user_id:
-            # 多用户模式：从向量库按 user_id 过滤加载文档
-            raw_docs = await asyncio.to_thread(
-                self.vectors_store.get,
-                where={"user_id": user_id},
-                include=["documents", "metadatas"],
-            )
-            if raw_docs and raw_docs.get("ids"):
-                for i in range(len(raw_docs["ids"])):
-                    all_docs.append(Document(
-                        page_content=raw_docs["documents"][i],
-                        metadata=raw_docs["metadatas"][i] if raw_docs["metadatas"] else {},
-                    ))
+            # 多用户模式：从 PGVector 按 user_id 和 kb_id 过滤加载文档
+            filter_expr = self._build_filter(user_id=user_id, kb_id=kb_id)
+            collection = self.vector_store.EmbeddingStore
+
+            def _fetch():
+                stmt = select(collection.document, collection.cmetadata)
+                if filter_expr is not None:
+                    stmt = stmt.where(filter_expr)
+                with self.vector_store._engine.connect() as conn:
+                    rows = conn.execute(stmt).fetchall()
+                return rows
+
+            rows = await asyncio.to_thread(_fetch)
+            for row in rows:
+                all_docs.append(Document(
+                    page_content=row.document,
+                    metadata=row.cmetadata or {},
+                ))
+
+            # ── 原 Chroma 代码 ──
+            # where_filter: dict = {"user_id": user_id}
+            # if kb_id is not None:
+            #     where_filter = {"$and": [{"user_id": user_id}, {"kb_id": kb_id}]}
+            # raw_docs = await asyncio.to_thread(
+            #     self.vectors_store.get,
+            #     where=where_filter,
+            #     include=["documents", "metadatas"],
+            # )
+            # if raw_docs and raw_docs.get("ids"):
+            #     for i in range(len(raw_docs["ids"])):
+            #         all_docs.append(Document(
+            #             page_content=raw_docs["documents"][i],
+            #             metadata=raw_docs["metadatas"][i] if raw_docs["metadatas"] else {},
+            #         ))
         else:
             # 无用户隔离模式：从磁盘加载所有文件（兼容旧逻辑）
             allowed_file_path: tuple[str] = await listdir_allowed_type(
-                chroma_config['data_path'],
-                tuple(chroma_config['allow_knowledge_file_types'])
+                self.config['data_path'],
+                tuple(self.config['allow_knowledge_file_types'])
             )
             file_paths = list(allowed_file_path)
 
@@ -84,127 +146,100 @@ class VectorStoreService:
         if all_docs:
             bm25_retriever = BM25Retriever.from_documents(
                 documents=all_docs,
-                k=chroma_config['k']
+                k=self.config['k']
             )
             return bm25_retriever
         else:
             return None
 
-    async def _get_all_documents(self) -> list[Document]:
+    # ============================================================
+    # 混合检索器（向量 + BM25）
+    # ============================================================
+    async def get_retriever(self, query: str = None, user_id: str | None = None, kb_id: int | None = None):
+        # 构建 PGVector 过滤条件
+        filter_expr = self._build_filter(user_id=user_id, kb_id=kb_id)
 
-        all_docs =await asyncio.to_thread( 
-            self.vectors_store.get,
-            include=['documemnts','metadatas'] 
-        )
-        documents=[]
-        for i,doc in enumerate(all_docs['documents']):
-            metadata=all_docs['metadatas'][i] if i <len(all_docs['metadatas']) else {}
-            documents.append(Document(page_content=doc,metadata=metadata))
-        return documents
+        search_kwargs = {'k': self.config['k']}
+        if filter_expr is not None:
+            search_kwargs['filter'] = filter_expr
 
-    async def  get_retriever(self,query:str=None,user_id:str|None=None):
-        search_kwargs = {'k': chroma_config['k']}
-        if user_id:
-            search_kwargs['filter'] = {'user_id': user_id}
-        vector_retriever=self.vectors_store.as_retriever(
+        vector_retriever = self.vector_store.as_retriever(
             search_type='similarity',
             search_kwargs=search_kwargs
         )
 
-        bm25_retriever=await self.get_bm25_retriever(user_id=user_id)
+        bm25_retriever = await self.get_bm25_retriever(user_id=user_id, kb_id=kb_id)
 
         if bm25_retriever:
-            weights= await self.get_dynamic_weights(query)
-            ensemble_retriever=EnsembleRetriever(
-                retrievers=[vector_retriever,bm25_retriever],
+            weights = await self.get_dynamic_weights(query)
+            ensemble_retriever = EnsembleRetriever(
+                retrievers=[vector_retriever, bm25_retriever],
                 weights=weights
             )
             return ensemble_retriever
         else:
             return vector_retriever
 
+    # ============================================================
+    # 动态权重（根据查询长度调整向量/BM25 权重）
+    # ============================================================
     @staticmethod
-    async def get_dynamic_weights(query:str=None):
-        default_vector_weights=0.5
-        default_bm25_weights=0.5
+    async def get_dynamic_weights(query: str = None):
+        default_vector_weights = 0.5
+        default_bm25_weights = 0.5
 
         if not query:
-            return [default_vector_weights,default_bm25_weights]
-        
-        query_length=len(query)
-        query_words=len(query.split())
+            return [default_vector_weights, default_bm25_weights]
 
-        if query_length>50:
-            vector_weights=0.7
-            bm25_weights=0.3
-        elif query_length<20:
-            vector_weights=0.3
-            bm25_weights=0.7
+        query_length = len(query)
+        query_words = len(query.split())
+
+        if query_length > 50:
+            vector_weights = 0.7
+            bm25_weights = 0.3
+        elif query_length < 20:
+            vector_weights = 0.3
+            bm25_weights = 0.7
         else:
-            vector_weights=0.5
-            bm25_weights=0.5
-        
-        if query_words>0:
-            bili=query_words/query_length
-            if bili>0.1:
-                bm25_weights=min(bm25_weights+0.1,0.7)
-                vector_weights=max(bm25_weights-0.1,0.3)
-        return [vector_weights,bm25_weights]
+            vector_weights = 0.5
+            bm25_weights = 0.5
 
-    async def check_md5_hex(self,check_md5_for:str)->bool:
-        md5_path=get_abstract_path(chroma_config['md5_hex_store'])
-        md5_dir=os.path.dirname(md5_path)
+        if query_words > 0:
+            bili = query_words / query_length
+            if bili > 0.1:
+                bm25_weights = min(bm25_weights + 0.1, 0.7)
+                vector_weights = max(bm25_weights - 0.1, 0.3)
+        return [vector_weights, bm25_weights]
+
+    # ============================================================
+    # MD5 去重
+    # ============================================================
+    async def check_md5_hex(self, check_md5_for: str) -> bool:
+        md5_path = get_abstract_path(self.config['md5_hex_store'])
+        md5_dir = os.path.dirname(md5_path)
         if not await aio_os.path.exists(md5_dir):
-            await aio_os.makedirs(md5_dir,exist_ok=True)
+            await aio_os.makedirs(md5_dir, exist_ok=True)
         if not await aio_os.path.exists(md5_path):
-            async with aiofiles.open (md5_path,'w',encoding="utf-8") as f:
+            async with aiofiles.open(md5_path, 'w', encoding="utf-8") as f:
                 pass
             return False
-        
-        async with aiofiles.open(md5_path,'r',encoding='utf-8') as f:
+
+        async with aiofiles.open(md5_path, 'r', encoding='utf-8') as f:
             async for line in f:
-                if line.strip()==check_md5_for:
+                if line.strip() == check_md5_for:
                     return True
             return False
 
-    async def save_md5_hex(self,md5_hex:str):
-        async with aiofiles.open(get_abstract_path(chroma_config['md5_hex_store']),'a',encoding="utf-8") as f:
-            await f.write(md5_hex+'\n')
+    async def save_md5_hex(self, md5_hex: str):
+        async with aiofiles.open(get_abstract_path(self.config['md5_hex_store']), 'a', encoding="utf-8") as f:
+            await f.write(md5_hex + '\n')
 
-    async def delete_user_documents(self,user_id:str):
-        try:
-            await asyncio.to_thread(
-                self.vectors_store.delete,
-                where={"user_id":user_id}
-            )
-            logger.info(f"【向量库】用户文档已删除 | user={user_id}")
-        except Exception as e:
-            logger.error(f"【向量库】用户{user_id}的文档删除出现异常{e}")
-            raise
-
-    async def delete_all_documents(self):
-        """删除向量数据库中所有文档，并清空 MD5 记录"""
-        try:
-            # 获取所有文档 ID 后删除
-            all_ids = await asyncio.to_thread(self.vectors_store.get, include=[])
-            if all_ids and all_ids.get("ids"):      
-                await asyncio.to_thread(self.vectors_store.delete, ids=all_ids["ids"])
-            logger.info("【向量库】所有文档已清空")
-        except Exception as e:
-            logger.error(f"【向量库】清空所有文档异常 | {e}")
-            raise
-        try:
-            # 清空 MD5 记录文件
-            md5_path = get_abstract_path(chroma_config['md5_hex_store'])
-            async with aiofiles.open(md5_path, 'w', encoding='utf-8') as f:
-                await f.truncate(0)
-            logger.info("【向量库】MD5记录已清空")
-        except Exception as e:
-            logger.error(f"【向量库】清空MD5记录异常 | {e}")
-
-    async def get_file_document(self,read_path:str)-> list[Document]:
+    # ============================================================
+    # 文件加载
+    # ============================================================
+    async def get_file_document(self, read_path: str) -> list[Document]:
         if read_path.endswith(".txt"):
-            return await txt_loader(read_path) 
+            return await txt_loader(read_path)
         elif read_path.endswith(".pdf"):
             return await pdf_loader(read_path)
         elif read_path.endswith(".md"):
@@ -216,27 +251,30 @@ class VectorStoreService:
         else:
             return []
 
-    async def store_document(self,files:list=None,user_id:str=None):
-        files_path=[]
+    # ============================================================
+    # 文档入库（保持了完整的分块元数据：source_file/chunk_index/user_id/kb_id/doc_id）
+    # ============================================================
+    async def store_document(self, files: list = None, user_id: str = None):
+        files_path = []
         if files:
             for file in files:
-                tempfile_path=await asyncio.to_thread(
+                tempfile_path = await asyncio.to_thread(
                     tempfile.NamedTemporaryFile,
                     suffix=file.split('.')[-1],
                     delete=False
                 )
-                content=await file.read()
-                await asyncio.to_thread(tempfile_path.write,content)
+                content = await file.read()
+                await asyncio.to_thread(tempfile_path.write, content)
                 files_path.append(tempfile_path.name)
         else:
-            allowed_file_path:tuple(str)=await listdir_allowed_type(
-                chroma_config['data_path'],
-                tuple(chroma_config['allow_knowledge_file_types'])
+            allowed_file_path: tuple[str] = await listdir_allowed_type(
+                self.config['data_path'],
+                tuple(self.config['allow_knowledge_file_types'])
             )
-            files_path=list(allowed_file_path)
-        
+            files_path = list(allowed_file_path)
+
         for file_path in files_path:
-            md5_hex=await get_file_md5_hex(file_path)
+            md5_hex = await get_file_md5_hex(file_path)
             if await self.check_md5_hex(md5_hex):
                 logger.info(f"【向量库】文件已存在，跳过入库 | {file_path}")
                 if files:
@@ -247,7 +285,7 @@ class VectorStoreService:
                 continue
 
             try:
-                documents:list[Document]=await self.get_file_document(file_path)
+                documents: list[Document] = await self.get_file_document(file_path)
                 if not documents:
                     logger.error(f"向量数据库加载文档{file_path}为空，跳过入库")
                     if files:
@@ -258,12 +296,12 @@ class VectorStoreService:
                     continue
 
                 # 切分文档
-                documents:list[Document] = await self.spliter.split_documents(documents)
+                documents: list[Document] = await self.spliter.split_documents(documents)
 
-                #给分块文档加上分块索引和源头文件名
-                for i, doc in enumerate(documents,1):
+                # 给分块文档加上分块索引和源头文件名
+                for i, doc in enumerate(documents, 1):
                     doc.metadata["chunk_index"] = i
-                    doc.metadata["source_file"]=os.path.basename(doc.metadata["source"])
+                    doc.metadata["source_file"] = os.path.basename(doc.metadata["source"])
 
                 if not documents:
                     logger.error(f"【向量库】文档切分为空，跳过入库 | {file_path}")
@@ -273,14 +311,15 @@ class VectorStoreService:
                         except Exception as e:
                             logger.error(f"【向量库】删除临时文件异常 | {file_path} | {e}")
                     continue
-                
-                #切分用户 user_id 作为元数据
+
+                # 注入 user_id 作为元数据
                 if user_id:
                     for doc in documents:
-                        doc.metadata['user_id']=user_id
-                
+                        doc.metadata['user_id'] = user_id
+
+                # PGVector 入库（同步方法，用 asyncio.to_thread 包装）
                 await asyncio.to_thread(
-                    self.vectors_store.add_documents,
+                    self.vector_store.add_documents,
                     documents
                 )
 
@@ -293,7 +332,7 @@ class VectorStoreService:
                         os.unlink(file_path)
                     except Exception as e:
                         logger.error(f"【向量库】删除临时文件异常 | {file_path} | {e}")
-            
+
             except Exception as e:
                 logger.error(f"【向量库】文档入库异常 | {file_path} | {e}")
                 if files:
@@ -303,18 +342,75 @@ class VectorStoreService:
                         logger.error(f"【向量库】删除临时文件异常 | {file_path} | {e}")
                 continue
 
+    # ============================================================
+    # 删除操作
+    # ============================================================
+    async def delete_user_documents(self, user_id: str):
+        """删除指定用户的所有向量"""
+        try:
+            filter_expr = self._build_filter(user_id=user_id)
+            await asyncio.to_thread(
+                self.vector_store.delete,
+                filter=filter_expr
+            )
+            logger.info(f"【向量库】用户文档已删除 | user={user_id}")
+        except Exception as e:
+            logger.error(f"【向量库】用户{user_id}的文档删除出现异常{e}")
+            raise
+
+    async def delete_all_documents(self):
+        """删除向量数据库中所有文档，并清空 MD5 记录"""
+        try:
+            # 使用 SQLAlchemy 直接删除所有行
+            def _delete_all():
+                with self.vector_store._engine.connect() as conn:
+                    with conn.begin():
+                        conn.execute(sa_delete(self.vector_store.EmbeddingStore))
+
+            await asyncio.to_thread(_delete_all)
+            logger.info("【向量库】所有文档已清空")
+        except Exception as e:
+            logger.error(f"【向量库】清空所有文档异常 | {e}")
+            raise
+        try:
+            # 清空 MD5 记录文件
+            md5_path = get_abstract_path(self.config['md5_hex_store'])
+            async with aiofiles.open(md5_path, 'w', encoding='utf-8') as f:
+                await f.truncate(0)
+            logger.info("【向量库】MD5记录已清空")
+        except Exception as e:
+            logger.error(f"【向量库】清空MD5记录异常 | {e}")
+
     async def delete_by_doc_id(self, doc_id: int) -> int:
         """删除指定 doc_id 的所有向量，返回删除数量"""
         try:
-            all_data = await asyncio.to_thread(self.vectors_store.get, include=["metadatas"])
-            ids_to_delete = []
-            for i, meta in enumerate(all_data.get("metadatas", []) if all_data else []):
-                if meta and meta.get("doc_id") == doc_id:
-                    ids_to_delete.append(all_data["ids"][i])
-            if ids_to_delete:
-                await asyncio.to_thread(self.vectors_store.delete, ids=ids_to_delete)
-                logger.info(f"【向量库】已删除 doc_id={doc_id} 的 {len(ids_to_delete)} 条向量")
-            return len(ids_to_delete)
+            filter_expr = self._build_filter(doc_id=doc_id)
+
+            # 先计数
+            def _count():
+                collection = self.vector_store.EmbeddingStore
+                stmt = select(func.count()).select_from(collection).where(filter_expr)
+                with self.vector_store._engine.connect() as conn:
+                    return conn.execute(stmt).scalar()
+            count = await asyncio.to_thread(_count)
+
+            # 再删除
+            await asyncio.to_thread(
+                self.vector_store.delete,
+                filter=filter_expr
+            )
+            logger.info(f"【向量库】已删除 doc_id={doc_id} 的 {count} 条向量")
+            return count
+
+            # ── 原 Chroma 代码 ──
+            # all_data = await asyncio.to_thread(self.vectors_store.get, include=["metadatas"])
+            # ids_to_delete = []
+            # for i, meta in enumerate(all_data.get("metadatas", []) if all_data else []):
+            #     if meta and meta.get("doc_id") == doc_id:
+            #         ids_to_delete.append(all_data["ids"][i])
+            # if ids_to_delete:
+            #     await asyncio.to_thread(self.vectors_store.delete, ids=ids_to_delete)
+            # return len(ids_to_delete)
         except Exception as e:
             logger.error(f"【向量库】删除 doc_id={doc_id} 的向量异常: {e}")
             return 0
@@ -322,46 +418,87 @@ class VectorStoreService:
     async def delete_by_kb_id(self, kb_id: int) -> int:
         """删除指定 kb_id 的所有向量，返回删除数量"""
         try:
-            all_data = await asyncio.to_thread(self.vectors_store.get, include=["metadatas"])
-            ids_to_delete = []
-            for i, meta in enumerate(all_data.get("metadatas", []) if all_data else []):
-                if meta and meta.get("kb_id") == kb_id:
-                    ids_to_delete.append(all_data["ids"][i])
-            if ids_to_delete:
-                await asyncio.to_thread(self.vectors_store.delete, ids=ids_to_delete)
-                logger.info(f"【向量库】已删除 kb_id={kb_id} 的 {len(ids_to_delete)} 条向量")
-            return len(ids_to_delete)
+            filter_expr = self._build_filter(kb_id=kb_id)
+
+            def _count():
+                collection = self.vector_store.EmbeddingStore
+                stmt = select(func.count()).select_from(collection).where(filter_expr)
+                with self.vector_store._engine.connect() as conn:
+                    return conn.execute(stmt).scalar()
+            count = await asyncio.to_thread(_count)
+
+            await asyncio.to_thread(
+                self.vector_store.delete,
+                filter=filter_expr
+            )
+            logger.info(f"【向量库】已删除 kb_id={kb_id} 的 {count} 条向量")
+            return count
+
+            # ── 原 Chroma 代码 ──
+            # all_data = await asyncio.to_thread(self.vectors_store.get, include=["metadatas"])
+            # ids_to_delete = []
+            # for i, meta in enumerate(all_data.get("metadatas", []) if all_data else []):
+            #     if meta and meta.get("kb_id") == kb_id:
+            #         ids_to_delete.append(all_data["ids"][i])
+            # if ids_to_delete:
+            #     await asyncio.to_thread(self.vectors_store.delete, ids=ids_to_delete)
+            # return len(ids_to_delete)
         except Exception as e:
             logger.error(f"【向量库】删除 kb_id={kb_id} 的向量异常: {e}")
             return 0
 
+    # ============================================================
+    # 文档级召回（按 chunk_index 排序返回全部分块）
+    # ============================================================
+    async def get_documents_by_doc_id(self, doc_id: int, user_id: str | None = None) -> list[Document]:
+        """按 doc_id 获取该文档的全部分块（用于文档级召回）
+
+        按 chunk_index 升序返回，保证文档原始顺序。
+        """
+        try:
+            filter_expr = self._build_filter(doc_id=doc_id, user_id=user_id)
+            collection = self.vector_store.EmbeddingStore
+
+            def _fetch():
+                stmt = select(collection.document, collection.cmetadata).where(filter_expr)
+                with self.vector_store._engine.connect() as conn:
+                    rows = conn.execute(stmt).fetchall()
+                return rows
+
+            rows = await asyncio.to_thread(_fetch)
+            docs = []
+            for row in rows:
+                docs.append(Document(
+                    page_content=row.document,
+                    metadata=row.cmetadata or {},
+                ))
+            docs.sort(key=lambda d: d.metadata.get("chunk_index", 0))
+            return docs
+
+            # ── 原 Chroma 代码 ──
+            # all_data = await asyncio.to_thread(
+            #     self.vectors_store.get,
+            #     include=["documents", "metadatas"],
+            # )
+            # docs = []
+            # if not all_data or not all_data.get("ids"):
+            #     return docs
+            # for i in range(len(all_data["ids"])):
+            #     meta = all_data["metadatas"][i] if all_data["metadatas"] else {}
+            #     if not meta or meta.get("doc_id") != doc_id:
+            #         continue
+            #     if user_id and meta.get("user_id") != user_id:
+            #         continue
+            #     docs.append(Document(
+            #         page_content=all_data["documents"][i],
+            #         metadata=meta,
+            #     ))
+            # docs.sort(key=lambda d: d.metadata.get("chunk_index", 0))
+            # return docs
+        except Exception as e:
+            logger.error(f"【向量库】获取 doc_id={doc_id} 的文档分块异常: {e}")
+            return []
+
 
 # 兼容旧代码的别名
 VectorStore = VectorStoreService
-
-
-
-                
-            
-
-
-            
-
-
-                
-                
-                
-            
-
-
-
-
-
-
-
-
-            
-
-
-
-        

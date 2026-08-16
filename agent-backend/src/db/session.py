@@ -82,20 +82,17 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def init_db():
     """应用启动时调用：连接验证 + 建表 + 建扩展索引"""
     from src.models import Base
-
-    # from src.core.rag.vector_store import VectorStoreService
+    from sqlalchemy import text
 
     # 1. 建所有 ORM 表（documents, conversations, messages 等）
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info(f"【db】ORM 表已就绪 | {settings.db_host}:{settings.db_port}/{settings.db_name}")
 
-    # 2. 向量表初始化暂时注释，目前只使用 RAG 问答功能
-    # async with async_session_factory() as session:
-    #     try:
-    #         await VectorStoreService().init_table(session)
-    #     except Exception as e:
-    #         logger.warning(f"[DB] 向量表初始化跳过（首次部署可能需要先运行迁移）: {e}")
+    # 2. 启用 pgvector 扩展（向量存储需要）
+    async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    logger.info("【db】pgvector 扩展已启用")
 
 
 async def close_db():

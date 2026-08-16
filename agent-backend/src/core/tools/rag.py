@@ -2,8 +2,9 @@ from langchain_core.tools import tool
 from contextvars import ContextVar
 from src.core.rag.rag_core import ragService
 
-# 使用 contextvars 传递当前请求的 user_id（线程安全）
+# 使用 contextvars 传递当前请求的 user_id 和 kb_id（线程安全）
 current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default=None)
+current_kb_id: ContextVar[int | None] = ContextVar("current_kb_id", default=None)
 
 # 防止每次tool调用都重新建 Chroma、BM25、ChatModel、Chain，创建一个全局单例
 _rag_service = None
@@ -19,4 +20,5 @@ async def rag_tool(query: str) -> str:
     """使用rag工具回答用户问题"""
     rag_service = _get_rag_service()
     uid = current_user_id.get()
-    return await rag_service.rag_core(query, user_id=uid)
+    kid = current_kb_id.get()
+    return await rag_service.rag_core(query, user_id=uid, kb_id=kid)

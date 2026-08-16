@@ -1,6 +1,6 @@
 import os, hashlib, aiofiles, asyncio
 from langchain_core.documents import Document
-from langchain_community.document_loaders import PyPDFLoader, TextLoader, UnstructuredMarkdownLoader, UnstructuredPowerPointLoader
+from langchain_community.document_loaders import PyPDFLoader, TextLoader, UnstructuredMarkdownLoader, UnstructuredPowerPointLoader, UnstructuredWordDocumentLoader
 
 from src.logger.logger import logger
 
@@ -122,7 +122,7 @@ async def word_loader(file_path: str) -> list[Document]:
     """
     abs_file_path = get_abstract_path(file_path) if not os.path.isabs(file_path) else file_path
     try:
-        loader = TextLoader(abs_file_path, encoding='utf-8')
+        loader = UnstructuredWordDocumentLoader(abs_file_path, mode="single")
         return await asyncio.to_thread(loader.load)
     except Exception as e:
         logger.error(f"【文档加载】加载文件 {abs_file_path} 时出错: {e}")

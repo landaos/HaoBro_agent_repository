@@ -54,8 +54,8 @@ export default function DocumentDetailDrawer({
   return (
     <Dialog.Root open={!!docId} onOpenChange={(open) => { if (!open) onClose() }}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/40" />
-        <Dialog.Content className="fixed top-0 right-0 h-full w-[640px] max-w-[90vw] bg-[var(--color-card)] shadow-xl flex flex-col">
+        <Dialog.Overlay className="fixed inset-0 bg-black/40 z-40" />
+        <Dialog.Content className="fixed top-0 right-0 h-full w-[640px] max-w-[90vw] bg-[var(--color-card)] shadow-xl flex flex-col z-50">
           {/* 标题栏 */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)] shrink-0">
             <Dialog.Title className="text-base font-medium text-[var(--color-text)] truncate flex items-center gap-2">
@@ -127,7 +127,7 @@ export default function DocumentDetailDrawer({
                     <span className="text-[var(--color-text)]">{detail.file_type}</span>
                   </div>
                   <div>
-                    <span className="text-[var(--color-text-tertiary)]">分块: </span>
+                    <span className="text-[var(--color-text-tertiary)]">{t('knowledge.chunks')}: </span>
                     <span className="text-[var(--color-text)]">{detail.chunk_count}</span>
                   </div>
                   <div>
@@ -179,7 +179,7 @@ export default function DocumentDetailDrawer({
                   </div>
                 ) : (
                   <p className="text-sm text-[var(--color-text-tertiary)] italic">
-                    暂无元数据
+                    {t('knowledge.noMetadata')}
                   </p>
                 )}
               </div>

@@ -1,5 +1,5 @@
-﻿collection_name: rag_collection
-persist_directory: src/data/chromadb
+# 向量存储配置（PGVector）
+collection_name: rag_collection
 k: 5
 data_path: src/data/knowledge_base
 md5_hex_store: src/data/md5_hex_store/md5_hex_store.txt

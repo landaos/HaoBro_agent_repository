@@ -15,6 +15,12 @@ from src.config import settings
 from src.prompt.prompt_loader import load_prompt                                
             
 
+# 文档级召回阈值：最高分 chunk 超过该值，说明问题与该文档高度相关，
+# 直接取回该文档的全部分块，避免只召回片段导致回答不完整。
+# 注意：全量召回成本高，阈值应明显高于 chunk 级阈值(0.55)，防止误触发引入噪音。
+DOCUMENT_LEVEL_THRESHOLD = 0.75
+
+
 class ragService:
     def __init__(self):
         self.vector_store = VectorStoreService()
@@ -45,9 +51,9 @@ class ragService:
             logger.error(f"【hyde】生成假设性文档失败: {e}")
             return query
 
-    async def retriever_documents(self,query:str,user_id:str|None=None):
+    async def retriever_documents(self,query:str,user_id:str|None=None, kb_id: int | None = None):
         try:
-            retriever = await self.vector_store.get_retriever(query, user_id)
+            retriever = await self.vector_store.get_retriever(query, user_id, kb_id)
             logger.info("【rag】开始检索文档")
             hyde_document=await self.generate_hypothetical_document(query)
             documents=await retriever.ainvoke(hyde_document)
@@ -67,9 +73,9 @@ class ragService:
             logger.error(f"【rag】对文档进行重排序失败: {e}")
             return documents
 
-    async def rag_core(self,query:str,user_id:str|None=None)->str:
+    async def rag_core(self,query:str,user_id:str|None=None, kb_id: int | None = None)->str:
         try:
-            documents=await self.retriever_documents(query,user_id)
+            documents=await self.retriever_documents(query,user_id, kb_id)
             documents_filtered=[doc.page_content for doc in documents]
             documents_rerankered=await self.reranker_documents(query,documents_filtered,documents)
             if not documents_rerankered:
@@ -82,10 +88,27 @@ class ragService:
             if max_score>0.55:
                 final_document=""
                 logger.info("【rag】最相关文档相似度大于0.55,使用rag链路生成回答")
-                reranked_documents=[doc["document"] for doc in documents_rerankered if doc["relevance_score"]>0.5]
-                logger.info(f"【rag】最终基于{len(reranked_documents)}条检索文档进行用户问题解答")
-                for i,doc in enumerate(reranked_documents,1):
-                    final_document+=f"{doc}\n"
+
+                # ── 文档级召回：最高分超过阈值，问题与该文档高度相关，取整篇文档全部分块 ──
+                best = max(documents_rerankered, key=lambda d: d["relevance_score"])
+                if best["relevance_score"] > DOCUMENT_LEVEL_THRESHOLD:
+                    best_idx = best.get("index")
+                    if best_idx is not None and 0 <= best_idx < len(documents):
+                        best_doc_id = documents[best_idx].metadata.get("doc_id")
+                        if best_doc_id is not None:
+                            full_docs = await self.vector_store.get_documents_by_doc_id(best_doc_id, user_id)
+                            if full_docs:
+                                final_document = "\n".join(
+                                    f"【参考文件来源:{d.metadata.get('source_file', '未知文件')}第{d.metadata.get('chunk_index', '?')}分块】\n{d.page_content}"
+                                    for d in full_docs
+                                )
+                                logger.info(f"【rag】命中文档级召回 | doc_id={best_doc_id}, 取回 {len(full_docs)} 个分块")
+
+                if not final_document:
+                    reranked_documents=[doc["document"] for doc in documents_rerankered if doc["relevance_score"]>0.5]
+                    logger.info(f"【rag】最终基于{len(reranked_documents)}条检索文档进行用户问题解答")
+                    for i,doc in enumerate(reranked_documents,1):
+                        final_document+=f"{doc}\n"
                 import time
                 start_time=time.time()
                 try:

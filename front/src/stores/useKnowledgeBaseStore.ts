@@ -36,11 +36,13 @@ export const useKnowledgeBaseStore = create<KnowledgeBaseState>((set, get) => ({
     set({ loading: true })
     try {
       const res = await knowledgeBaseApi.list()
-      set({ list: res.items })
-      // 如果还没有选中，默认选中第一个
+      const items = res.items
+      set({ list: items })
+      // 校验当前选中的 ID 是否还在新列表里（如切换账号后旧 ID 已失效）
       const { selectedId } = get()
-      if (!selectedId && res.items.length > 0) {
-        set({ selectedId: res.items[0].id })
+      const stillExists = items.some((k) => k.id === selectedId)
+      if (!stillExists) {
+        set({ selectedId: items.length > 0 ? items[0].id : null })
       }
     } catch {
       // ignore

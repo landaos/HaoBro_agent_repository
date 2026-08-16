@@ -8,6 +8,6 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=True,
-        reload_excludes=[".venv/*"],  # 排除虚拟环境，避免 comtypes 生成文件触发重启
+        reload_dirs=["src"],  # 只监控 src 目录，避免 .venv 依赖库文件变化触发重启
         log_level="info",
     )

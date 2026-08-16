@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     def db_url_sync(self):
         return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
 
+    @property
+    def pgvector_url(self):
+        """PGVector 同步连接字符串（langchain_postgres 使用 psycopg 驱动）"""
+        return f"postgresql+psycopg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+
     # ── Redis ──
     redis_host: str = Field("localhost", validation_alias="REDIS_HOST")
     redis_port: int = Field(6379, validation_alias="REDIS_PORT")

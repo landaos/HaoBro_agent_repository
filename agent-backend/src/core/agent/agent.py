@@ -16,7 +16,7 @@ from src.logger.logger import logger
 from src.config import settings
 from src.prompt.prompt_loader import load_prompt
 from src.core.tools.app_launcher import launch_app
-from src.core.tools.rag import rag_tool, current_user_id as _rag_user_id_ctx
+from src.core.tools.rag import rag_tool, current_user_id as _rag_user_id_ctx, current_kb_id as _rag_kb_id_ctx
 from src.db.session import async_session_factory
 from src.services.conversation import (
     get_conversation,
@@ -138,6 +138,8 @@ async def get_agent_stream_response(
 
             # 设置当前请求的 user_id，供 rag_tool 通过 contextvar 读取
             _rag_user_id_ctx.set(user_id)
+            if kb_id is not None:
+                _rag_kb_id_ctx.set(kb_id)
 
             # 等待后台模型预热完成（约需 40s），等待时发心跳保持连接
             while _agent_instance is None:

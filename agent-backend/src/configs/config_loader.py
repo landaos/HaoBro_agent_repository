@@ -34,6 +34,9 @@ def load_config(
 chroma_config = load_config(config_path=get_abstract_path('src/configs/chroma.yaml'))
 prompt_config = load_config(config_path=get_abstract_path('src/configs/prompt.yaml'))
 
+# 兼容旧代码的别名
+vector_store_config = chroma_config
+
 if __name__ == '__main__':
 
     print(chroma_config)

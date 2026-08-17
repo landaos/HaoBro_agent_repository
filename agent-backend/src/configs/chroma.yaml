@@ -9,6 +9,9 @@ allow_knowledge_file_types:
   - md
   - pptx
   - docx
+  - csv
+  - xlsx
+  - xls
 chunk_size: 200
 chunk_overlap: 20
 separators:

@@ -56,7 +56,7 @@ class ragService:
             retriever = await self.vector_store.get_retriever(query, user_id, kb_id)
             logger.info("【rag】开始检索文档")
             hyde_document=await self.generate_hypothetical_document(query)
-            documents=await retriever.ainvoke(hyde_document)
+            documents = await asyncio.to_thread(retriever.invoke, hyde_document)
             logger.info(f"【rag】检索到{len(documents)}条文档")
             return documents
         except Exception as e:
@@ -138,16 +138,3 @@ if __name__ == '__main__':
         # logger.info(f"【rag】最终回答: {answer}")
     
     asyncio.run(main())
-        
-
-
-    
-    
-
-    
-        
-    
-
-
-
-    

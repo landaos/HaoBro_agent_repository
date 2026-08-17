@@ -18,8 +18,9 @@ class Settings(BaseSettings):
     app_env: str = Field("development", validation_alias="APP_ENV")
 
     # ── JWT ──
-    secret_key: str = Field("change-me", validation_alias="SECRET_KEY")
+    secret_key: str = Field(..., validation_alias="SECRET_KEY")
     algorithm: str = Field("HS256", validation_alias="ALGORITHM")
+    access_token_expire_hours: int = Field(24, validation_alias="ACCESS_TOKEN_EXPIRE_HOURS")
 
     # ── LLM（阿里云 DashScope） ──
     ali_access_key_secret: str = Field("", validation_alias="ALIYUN_ACCESS_KEY_SECRET")

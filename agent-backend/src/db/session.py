@@ -40,7 +40,8 @@ engine = create_async_engine(
     echo=False,  # 关闭 SQL 日志，避免刷屏
     pool_size=10,
     max_overflow=20,
-    pool_pre_ping=True,
+    pool_pre_ping=True,   # 借出前 ping 连接，丢弃已断开/损坏连接
+    pool_recycle=300,      # 5分钟强制回收连接，避免 idle 残留
 )
 
 # ============================================================

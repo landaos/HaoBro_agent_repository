@@ -73,6 +73,7 @@ from src.db.redis import connect_redis
 from src.auth.security import get_current_user_id, get_user_info_from_redis, security, blacklist_token, generate_token, encode_password, verify_password
 from src.schemas.user import UserResponse, LoginRequest, UserUpdateRequest, RegisterRequest, ResetPasswordRequest
 from src.models.user import User, UserStatusChoice
+from src.services.rate_limiter import rate_limit
 
 user_router = APIRouter(tags=["user"],prefix="/user")
 
@@ -88,7 +89,10 @@ def dict_user_response(user: User) -> UserResponse:
     
 
 @user_router.post("/login")
-async def login(req: LoginRequest):
+async def login(
+    req: LoginRequest,
+    _rate_limit: None = Depends(rate_limit(limit=5, windows=60)),
+):
     async with async_session_factory() as db:
         if not req.username and not req.email:
             raise HTTPException(status_code=400, detail="用户名或邮箱不能为空")
@@ -112,7 +116,10 @@ async def login(req: LoginRequest):
       
 
 @user_router.post("/register")
-async def register(req: RegisterRequest):
+async def register(
+    req: RegisterRequest,
+    _rate_limit: None = Depends(rate_limit(limit=3, windows=60)),
+):
     if req.password != req.confirm_password:
         raise HTTPException(status_code=400, detail="两次输入的密码不一致")
     async with async_session_factory() as db:

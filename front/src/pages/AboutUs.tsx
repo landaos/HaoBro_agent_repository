@@ -18,7 +18,7 @@ export default function AboutUs() {
         <div>
           <h3 className="text-sm font-medium text-[var(--color-text)] mb-3">{t('about.techStack')}</h3>
           <div className="flex flex-wrap gap-2">
-            {['React', 'TypeScript', 'FastAPI', 'LangChain', 'PostgreSQL', 'Redis', 'ChromaDB', 'DashScope'].map((tech) => (
+            {['React', 'TypeScript', 'Vite', 'FastAPI', 'LangChain', 'PostgreSQL', 'PGVector', 'Redis', 'DashScope', 'HyDE'].map((tech) => (
               <span key={tech} className="px-2.5 py-1 text-xs rounded-full bg-rose-50 dark:bg-rose-900/30 text-rose-500 dark:text-rose-300 font-medium">{tech}</span>
             ))}
           </div>

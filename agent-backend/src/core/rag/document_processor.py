@@ -1,28 +1,13 @@
 """
 document_processor.py — 文档处理流水线
 
-负责：加载文档 → 分块 → 向量化 → 存入 Chroma
+负责：MD5去重 → 加载文档 → 分块 → 打元数据 → 向量化入库
 """
 import os
 
 from src.logger.logger import logger
 from src.core.rag.vector_store import VectorStoreService
-from src.core.rag.document_loader import pdf_loader, txt_loader, markdown_loader, ppt_loader, word_loader
-
-
-async def _load_document(file_path: str):
-    """根据文件扩展名加载文档"""
-    if file_path.endswith(".txt"):
-        return await txt_loader(file_path)
-    elif file_path.endswith(".pdf"):
-        return await pdf_loader(file_path)
-    elif file_path.endswith(".md"):
-        return await markdown_loader(file_path)
-    elif file_path.endswith(".pptx"):
-        return await ppt_loader(file_path)
-    elif file_path.endswith(".docx"):
-        return await word_loader(file_path)
-    return []
+from src.core.rag.document_loader import load_document, get_file_md5_hex
 
 
 async def process_document(
@@ -34,7 +19,7 @@ async def process_document(
     title: str | None = None,
 ) -> dict:
     """
-    处理文档完整流水线：加载 → 分块 → 打元数据 → 入库
+    处理文档完整流水线：MD5去重 → 加载 → 分块 → 打元数据 → 入库
 
     参数:
         file_path: 文件绝对路径
@@ -45,12 +30,18 @@ async def process_document(
         title:     文档标题（拼入分块正文，使标题词可被检索）
 
     返回:
-        {"chunk_count": int}
+        {"chunk_count": int, "skipped": bool}
     """
     vector_store = VectorStoreService()
 
+    # 0. MD5 去重
+    md5_hex = await get_file_md5_hex(file_path)
+    if md5_hex and await vector_store.check_md5_hex(md5_hex):
+        logger.info(f"【文档处理】MD5重复，跳过入库 | doc_id={doc_id}, file={os.path.basename(file_path)}")
+        return {"chunk_count": 0, "skipped": True}
+
     # 1. 加载文档
-    documents = await _load_document(file_path)
+    documents = await load_document(file_path)
     if not documents:
         logger.warning(f"【文档处理】文件加载为空 | {file_path}")
         return {"chunk_count": 0}
@@ -89,6 +80,10 @@ async def process_document(
                 raise
             logger.warning(f"【文档处理】入库失败，第 {attempt} 次重试 | doc_id={doc_id}, error={e}")
             await asyncio.sleep(2 * attempt)
+
+    # 5. 保存 MD5 防止重复入库
+    if md5_hex:
+        await vector_store.save_md5_hex(md5_hex)
 
     logger.info(f"【文档处理】成功 | doc_id={doc_id}, kb_id={kb_id}, chunks={len(split_docs)}")
     return {"chunk_count": len(split_docs)}

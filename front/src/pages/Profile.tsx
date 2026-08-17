@@ -133,12 +133,12 @@ export default function Profile() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-[var(--color-text)]">{t('profile.title')}</h1>
         {!editing ? (
-          <button onClick={() => setEditing(true)} className="px-4 py-2 text-sm rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] transition-colors">
+          <button onClick={() => setEditing(true)} className="px-4 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text)] hover:bg-[var(--color-bg-tertiary)] transition-colors">
             {t('profile.edit')}
           </button>
         ) : (
           <div className="flex gap-2">
-            <button onClick={() => setEditing(false)} className="px-4 py-2 text-sm rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] transition-colors">
+            <button onClick={() => setEditing(false)} className="px-4 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text)] hover:bg-[var(--color-bg-tertiary)] transition-colors">
               <X size={14} className="inline mr-1" />{t('profile.cancel')}
             </button>
             <button onClick={handleSave} disabled={loading} className="px-4 py-2 text-sm rounded-lg bg-rose-400 text-white hover:bg-rose-500 disabled:opacity-50 transition-colors">
@@ -205,7 +205,7 @@ export default function Profile() {
 
       <button
         onClick={() => { setPwdOpen(true); setPwdError('') }}
-        className="mt-6 flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] transition-colors"
+        className="mt-6 flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
       >
         <Lock size={14} />
         {t('profile.changePassword')}

@@ -19,6 +19,7 @@ from src.schemas.document import DocumentResponse
 from src.services.file_storage import FileStorageService, SUPPORTED_FILE_TYPES
 
 from src.core.rag.document_processor import process_document
+from src.core.rag.document_loader import generate_table_summary
 from src.core.rag.vector_store import VectorStoreService
 
 
@@ -317,13 +318,23 @@ async def process_doc_in_background(
             doc.status = "processing"
             await session.commit()
 
+            # ── 表格文件：AI 生成内容摘要作为标题，提升文档级召回准确率 ──
+            title = doc.title
+            ext = Path(file_path).suffix.lower()
+            if ext in (".csv", ".xlsx", ".xls"):
+                summary = await generate_table_summary(file_path)
+                if summary:
+                    title = summary
+                    doc.title = summary
+                    await session.commit()
+
             pipeline_result = await process_document(
                 file_path=file_path,
                 kb_id=kb_id,
                 doc_id=doc_id,
                 session=session,
                 user_id=user_id,
-                title=doc.title,
+                title=title,
             )
 
             doc.status = "completed"

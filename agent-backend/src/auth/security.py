@@ -16,6 +16,7 @@ from src.db.redis import connect_redis,set_redis_cache
 
 SECRET_KEY = settings.secret_key
 ALGORITHM = settings.algorithm
+ACCESS_TOKEN_EXPIRE_HOURS = settings.access_token_expire_hours
 
 security=HTTPBearer()
 
@@ -28,12 +29,12 @@ def verify_password(plain_password: str, hashed_password: str)->bool:
     return pwt_context.verify(plain_password, hashed_password)
 
 def generate_token(user_id: str,email:str,username:str)->tuple[str,int]:
-    ex=int(time.time())+60*60*24
+    ex=int(time.time())+ACCESS_TOKEN_EXPIRE_HOURS*60*60
     payload = {"user_id": user_id,"email":email,"username":username,"exp":ex,"iat":int(time.time()),"jti":str(uuid.uuid4())}    
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return token,ex
 
-def encode_token(token: str)->dict[str,Any] | None:
+def decode_token(token: str)->dict[str,Any] | None:
     try:
         payload=jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
@@ -41,7 +42,7 @@ def encode_token(token: str)->dict[str,Any] | None:
         return None
 
 async def blacklist_token(token: str):
-    payload = encode_token(token)
+    payload = decode_token(token)
     if payload is None:
         return
     jti = payload.get("jti")
@@ -57,7 +58,7 @@ async def blacklist_token(token: str):
         logger.warning(f"【auth】黑名单设置失败: {e}")
 
 async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    payload = encode_token(credentials.credentials)
+    payload = decode_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token",headers={"WWW-Authenticate": "Bearer"})
     

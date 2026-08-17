@@ -125,13 +125,10 @@ export function useSSE() {
         const errMsg = err instanceof Error ? err.message : '未知错误'
         const errName = err instanceof Error ? err.name : 'Unknown'
         console.warn(`[SSE] ${errName}: ${errMsg}`)
+        // AbortError 是用户主动停止或新请求中断旧请求，不视为错误
         if (err instanceof Error && err.name !== 'AbortError') {
           callbacks.onError?.(errMsg)
           setError(errMsg)
-        } else if (err instanceof Error && err.name === 'AbortError') {
-          // 在 UI 上也提示用户请求被中断
-          callbacks.onError?.('连接被中断，请重试')
-          setError('连接被中断')
         }
       } finally {
         setLoading(false)

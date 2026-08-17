@@ -16,8 +16,8 @@ from src.core.rag.text_spliter import AsyncTextSplitter
 from src.configs.config_loader import vector_store_config
 from src.core.agent.factory import embed_model
 from src.core.rag.document_loader import (
-    pdf_loader, txt_loader, listdir_allowed_type, get_file_md5_hex,
-    markdown_loader, ppt_loader, word_loader, get_project_root
+    listdir_allowed_type, get_file_md5_hex,
+    get_project_root, load_document,
 )
 from src.logger.logger import logger
 
@@ -26,7 +26,7 @@ from src.logger.logger import logger
 # ============================================================
 from langchain_postgres import PGVector
 from src.config import settings
-from sqlalchemy import and_, select, func, delete as sa_delete
+from sqlalchemy import select, func, delete as sa_delete
 
 
 def get_abstract_path(relative_path: str) -> str:
@@ -73,16 +73,29 @@ class VectorStoreService:
     # 过滤条件构建器
     # ============================================================
     def _build_filter(self, user_id=None, kb_id=None, doc_id=None):
-        """构建 SQLAlchemy 过滤条件（cmetadata 是 JSONB 列）"""
-        collection = self.vector_store.EmbeddingStore
-        conditions = []
+        """构建 PGVector dict 过滤条件（用于 as_retriever 的 search_kwargs）
+
+        PGVector 的 _handle_field_filter 使用 jsonb_path_match 做 JSONB 比较，
+        能正确处理整数/字符串类型匹配。
+
+        注意：返回 dict 而非 SQLAlchemy 表达式，因为 PGVector 内部会对
+        SQLAlchemy 表达式做 boolean 判断（if filter:），触发 SQLAlchemy 2.0
+        的 "Boolean value of this clause is not defined" 错误。
+        """
+        filter_dict = {}
         if user_id:
-            conditions.append(collection.cmetadata['user_id'].astext == str(user_id))
+            filter_dict['user_id'] = user_id
         if kb_id is not None:
-            conditions.append(collection.cmetadata['kb_id'].astext == str(kb_id))
+            filter_dict['kb_id'] = kb_id
         if doc_id is not None:
-            conditions.append(collection.cmetadata['doc_id'].astext == str(doc_id))
-        return and_(*conditions) if conditions else None
+            filter_dict['doc_id'] = doc_id
+        return filter_dict if filter_dict else None
+
+    def _dict_to_sql_filter(self, filter_dict):
+        """将 dict filter 转换为 SQLAlchemy 表达式（用于原始 SQL 查询）"""
+        if filter_dict is None:
+            return None
+        return self.vector_store._create_filter_clause(filter_dict)
 
     # ============================================================
     # BM25 关键词检索器
@@ -93,13 +106,14 @@ class VectorStoreService:
 
         if user_id:
             # 多用户模式：从 PGVector 按 user_id 和 kb_id 过滤加载文档
-            filter_expr = self._build_filter(user_id=user_id, kb_id=kb_id)
+            filter_dict = self._build_filter(user_id=user_id, kb_id=kb_id)
+            filter_clause = self._dict_to_sql_filter(filter_dict)
             collection = self.vector_store.EmbeddingStore
 
             def _fetch():
                 stmt = select(collection.document, collection.cmetadata)
-                if filter_expr is not None:
-                    stmt = stmt.where(filter_expr)
+                if filter_clause is not None:
+                    stmt = stmt.where(filter_clause)
                 with self.vector_store._engine.connect() as conn:
                     rows = conn.execute(stmt).fetchall()
                 return rows
@@ -156,12 +170,12 @@ class VectorStoreService:
     # 混合检索器（向量 + BM25）
     # ============================================================
     async def get_retriever(self, query: str = None, user_id: str | None = None, kb_id: int | None = None):
-        # 构建 PGVector 过滤条件
-        filter_expr = self._build_filter(user_id=user_id, kb_id=kb_id)
+        # 构建 PGVector dict 过滤条件（避免 SQLAlchemy boolean 判断错误）
+        filter_dict = self._build_filter(user_id=user_id, kb_id=kb_id)
 
         search_kwargs = {'k': self.config['k']}
-        if filter_expr is not None:
-            search_kwargs['filter'] = filter_expr
+        if filter_dict is not None:
+            search_kwargs['filter'] = filter_dict
 
         vector_retriever = self.vector_store.as_retriever(
             search_type='similarity',
@@ -235,21 +249,10 @@ class VectorStoreService:
             await f.write(md5_hex + '\n')
 
     # ============================================================
-    # 文件加载
+    # 文件加载（统一入口，委托给 document_loader.load_document）
     # ============================================================
     async def get_file_document(self, read_path: str) -> list[Document]:
-        if read_path.endswith(".txt"):
-            return await txt_loader(read_path)
-        elif read_path.endswith(".pdf"):
-            return await pdf_loader(read_path)
-        elif read_path.endswith(".md"):
-            return await markdown_loader(read_path)
-        elif read_path.endswith(".pptx"):
-            return await ppt_loader(read_path)
-        elif read_path.endswith(".docx"):
-            return await word_loader(read_path)
-        else:
-            return []
+        return await load_document(read_path)
 
     # ============================================================
     # 文档入库（保持了完整的分块元数据：source_file/chunk_index/user_id/kb_id/doc_id）
@@ -348,11 +351,13 @@ class VectorStoreService:
     async def delete_user_documents(self, user_id: str):
         """删除指定用户的所有向量"""
         try:
-            filter_expr = self._build_filter(user_id=user_id)
-            await asyncio.to_thread(
-                self.vector_store.delete,
-                filter=filter_expr
-            )
+            filter_dict = self._build_filter(user_id=user_id)
+            filter_clause = self._dict_to_sql_filter(filter_dict)
+            def _delete():
+                with self.vector_store._engine.connect() as conn:
+                    with conn.begin():
+                        conn.execute(sa_delete(self.vector_store.EmbeddingStore).where(filter_clause))
+            await asyncio.to_thread(_delete)
             logger.info(f"【向量库】用户文档已删除 | user={user_id}")
         except Exception as e:
             logger.error(f"【向量库】用户{user_id}的文档删除出现异常{e}")
@@ -384,21 +389,23 @@ class VectorStoreService:
     async def delete_by_doc_id(self, doc_id: int) -> int:
         """删除指定 doc_id 的所有向量，返回删除数量"""
         try:
-            filter_expr = self._build_filter(doc_id=doc_id)
+            filter_dict = self._build_filter(doc_id=doc_id)
+            filter_clause = self._dict_to_sql_filter(filter_dict)
 
             # 先计数
             def _count():
                 collection = self.vector_store.EmbeddingStore
-                stmt = select(func.count()).select_from(collection).where(filter_expr)
+                stmt = select(func.count()).select_from(collection).where(filter_clause)
                 with self.vector_store._engine.connect() as conn:
                     return conn.execute(stmt).scalar()
             count = await asyncio.to_thread(_count)
 
             # 再删除
-            await asyncio.to_thread(
-                self.vector_store.delete,
-                filter=filter_expr
-            )
+            def _delete():
+                with self.vector_store._engine.connect() as conn:
+                    with conn.begin():
+                        conn.execute(sa_delete(self.vector_store.EmbeddingStore).where(filter_clause))
+            await asyncio.to_thread(_delete)
             logger.info(f"【向量库】已删除 doc_id={doc_id} 的 {count} 条向量")
             return count
 
@@ -418,19 +425,21 @@ class VectorStoreService:
     async def delete_by_kb_id(self, kb_id: int) -> int:
         """删除指定 kb_id 的所有向量，返回删除数量"""
         try:
-            filter_expr = self._build_filter(kb_id=kb_id)
+            filter_dict = self._build_filter(kb_id=kb_id)
+            filter_clause = self._dict_to_sql_filter(filter_dict)
 
             def _count():
                 collection = self.vector_store.EmbeddingStore
-                stmt = select(func.count()).select_from(collection).where(filter_expr)
+                stmt = select(func.count()).select_from(collection).where(filter_clause)
                 with self.vector_store._engine.connect() as conn:
                     return conn.execute(stmt).scalar()
             count = await asyncio.to_thread(_count)
 
-            await asyncio.to_thread(
-                self.vector_store.delete,
-                filter=filter_expr
-            )
+            def _delete():
+                with self.vector_store._engine.connect() as conn:
+                    with conn.begin():
+                        conn.execute(sa_delete(self.vector_store.EmbeddingStore).where(filter_clause))
+            await asyncio.to_thread(_delete)
             logger.info(f"【向量库】已删除 kb_id={kb_id} 的 {count} 条向量")
             return count
 
@@ -456,11 +465,12 @@ class VectorStoreService:
         按 chunk_index 升序返回，保证文档原始顺序。
         """
         try:
-            filter_expr = self._build_filter(doc_id=doc_id, user_id=user_id)
+            filter_dict = self._build_filter(doc_id=doc_id, user_id=user_id)
+            filter_clause = self._dict_to_sql_filter(filter_dict)
             collection = self.vector_store.EmbeddingStore
 
             def _fetch():
-                stmt = select(collection.document, collection.cmetadata).where(filter_expr)
+                stmt = select(collection.document, collection.cmetadata).where(filter_clause)
                 with self.vector_store._engine.connect() as conn:
                     rows = conn.execute(stmt).fetchall()
                 return rows

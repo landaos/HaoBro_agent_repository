@@ -36,6 +36,8 @@ class AsyncTextSplitter:
 
     
     async def more_split(self,chunks:List[str])->List[str]:
+        if not chunks:
+            return []
         more_chunks=[]
         current_chunk=chunks[0]
         for i in range(1,len(chunks)):

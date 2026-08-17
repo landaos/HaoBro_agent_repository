@@ -72,7 +72,7 @@ export default function KnowledgeBase() {
     if (!selectedId) { toast.error(t('knowledge.noKBForChat')); return }
     const fileList = Array.from(files).filter((f) => {
       const ext = f.name.split('.').pop()?.toLowerCase()
-      if (!ext || !['pdf', 'txt', 'md', 'docx', 'pptx'].includes(ext)) { toast.error(`${t('knowledge.notSupported')}: ${f.name}`); return false }
+      if (!ext || !['pdf', 'txt', 'md', 'docx', 'pptx', 'csv', 'xlsx', 'xls'].includes(ext)) { toast.error(`${t('knowledge.notSupported')}: ${f.name}`); return false }
       if (f.size > 200 * 1024 * 1024) { toast.error(`${t('knowledge.tooLarge')}: ${f.name} (${t('knowledge.over200MB')})`); return false }
       return true
     })
@@ -170,7 +170,7 @@ export default function KnowledgeBase() {
         <>
           <div onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
             className={`relative border-2 border-dashed rounded-lg p-10 text-center transition-colors ${dragOver ? 'border-[var(--color-accent)] bg-[var(--color-accent-bg)]' : 'border-[var(--color-border)] hover:border-[var(--color-text-tertiary)]'}`}>
-            <input ref={fileInputRef} id="kb-file-upload" type="file" multiple accept=".pdf,.docx,.pptx,.txt,.md" className="hidden"
+            <input ref={fileInputRef} id="kb-file-upload" type="file" multiple accept=".pdf,.docx,.pptx,.txt,.md,.csv,.xlsx,.xls" className="hidden"
               onChange={(e) => { if (e.target.files) handleFilesSelected(e.target.files); e.target.value = '' }} />
             <Upload size={24} className="mx-auto mb-3 text-[var(--color-text-tertiary)]" />
             <p className="text-sm text-[var(--color-text-secondary)] mb-1">{t('knowledge.dragDrop')}</p>
@@ -226,7 +226,7 @@ export default function KnowledgeBase() {
                 {t('knowledge.documentList')}
                 <span className="text-[var(--color-text-tertiary)] ml-1">({t('knowledge.total')} {total} {t('knowledge.items')})</span>
               </h2>
-              <button onClick={() => setRefreshKey((k) => k + 1)} className="p-1.5 rounded text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] transition-colors" title={t('common.retry')}>
+              <button onClick={() => setRefreshKey((k) => k + 1)} className="p-1.5 rounded bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg-tertiary)] transition-colors" title={t('common.retry')}>
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
               </button>
             </div>

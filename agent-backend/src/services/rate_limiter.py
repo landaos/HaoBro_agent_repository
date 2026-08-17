@@ -1,8 +1,6 @@
-from socket import RDS_CANCEL_SENT_TO
-
 from fastapi import HTTPException, Request
 from src.db.redis import connect_redis
-from config import settings
+from src.config import settings
 
 _RATE_LIMIT_ENABLED = settings.rate_limit_enabled.lower() == "true"
 

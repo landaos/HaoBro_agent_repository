@@ -5,9 +5,15 @@ HF_ENDPOINT 必须在任何导入之前设置，确保 huggingface_hub
 在首次 import 前就能读到国内镜像地址。
 """
 import os
+import logging
 
 # ── 强制使用 Hugging Face 国内镜像（必须在 huggingface_hub 首次导入前设置） ──
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+
+# ── 降级 SQLAlchemy 连接池的 "Exception terminating connection" 日志 ──
+# 客户端断开 SSE 流时，Starlette 取消请求任务，连接池清理被中断会打印此日志。
+# pool_pre_ping=True 已确保后续请求拿到健康连接，此日志仅为噪音，降级为 WARNING。
+logging.getLogger("sqlalchemy.pool.impl.AsyncAdaptedQueuePool").setLevel(logging.WARNING)
 
 from contextlib import asynccontextmanager
 
@@ -25,6 +31,8 @@ from src.api.routers import (
 from src.config import settings
 from src.db.session import init_db, close_db
 from src.logger.logger import logger
+from src.middleware.logging_mw import LoggingMiddleware
+from src.middleware.exception_handler import register_exception_handlers
 
 
 @asynccontextmanager
@@ -61,6 +69,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── 请求日志中间件 ──
+app.add_middleware(LoggingMiddleware)
+
+# ── 全局异常处理器 ──
+register_exception_handlers(app)
 
 # ── 注册路由 ──
 app.include_router(health.router, prefix="/api/v1", tags=["健康检查"])

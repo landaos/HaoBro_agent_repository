@@ -41,6 +41,9 @@ SUPPORTED_FILE_TYPES = {
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ".txt": "text/plain",
     ".md": "text/markdown",
+    ".csv": "text/csv",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls": "application/vnd.ms-excel",
 }
 
 MAX_FILE_SIZE = 200 * 1024 * 1024  # 200MB

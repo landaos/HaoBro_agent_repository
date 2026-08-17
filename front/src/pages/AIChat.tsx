@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Send, User, Loader2, BookOpen } from 'lucide-react'
+import { Send, Square, User, Loader2, BookOpen } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeRaw from 'rehype-raw'
@@ -36,7 +36,7 @@ export default function AIChat() {
   const { t } = useTranslation()
   const theme = useThemeStore((s) => s.theme)
   const chatColor = useChatColorStore((s) => s.chatColor)
-  const { start, loading } = useSSE()
+  const { start, abort, loading } = useSSE()
 
   const {
     list: kbList,
@@ -109,6 +109,11 @@ export default function AIChat() {
   }
 
   const handleNewSession = () => { currentSessionId.current = ''; setMessages([]); navigate('/chat') }
+
+  const handleStop = useCallback(() => {
+    abort()
+    toast.info(t('chat.stopped'))
+  }, [abort, t])
 
   const isReady = loading || loadingHistory
   const selectedKB = kbList.find((k) => k.id === kbId)
@@ -206,10 +211,18 @@ export default function AIChat() {
           <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
             placeholder={t('chat.input')} rows={1}
             className="flex-1 px-4 py-2.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)]/80 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-placeholder)] resize-none focus:outline-none focus:ring-2 focus:ring-rose-400" />
-          <button onClick={() => handleSend(input)} disabled={!input.trim() || loading}
-            className="flex items-center justify-center w-10 h-10 rounded-lg bg-rose-400 text-white hover:bg-rose-500 disabled:opacity-40 transition-colors shrink-0">
-            {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-          </button>
+          {loading ? (
+            <button onClick={handleStop}
+              className="flex items-center justify-center w-10 h-10 rounded-lg bg-red-400 text-white hover:bg-red-500 transition-colors shrink-0"
+              title={t('chat.stop')}>
+              <Square size={14} fill="currentColor" />
+            </button>
+          ) : (
+            <button onClick={() => handleSend(input)} disabled={!input.trim()}
+              className="flex items-center justify-center w-10 h-10 rounded-lg bg-rose-400 text-white hover:bg-rose-500 disabled:opacity-40 transition-colors shrink-0">
+              <Send size={16} />
+            </button>
+          )}
         </div>
       </div>
     </div>

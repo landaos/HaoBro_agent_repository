@@ -70,7 +70,18 @@
 #       return v
 # ═══════════════════════════════════════════
 
-from pydantic import BaseModel, Field, EmailStr
+import re
+
+from pydantic import BaseModel, Field, EmailStr, field_validator
+
+
+def _validate_password_strength(v: str) -> str:
+    """密码强度校验：至少包含一个字母和一个数字"""
+    if not re.search(r"[a-zA-Z]", v):
+        raise ValueError("密码必须包含至少一个字母")
+    if not re.search(r"\d", v):
+        raise ValueError("密码必须包含至少一个数字")
+    return v
 
 
 class LoginRequest(BaseModel):
@@ -87,11 +98,21 @@ class RegisterRequest(BaseModel):
     phone: str | None = None
     gender: int | None = None
 
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        return _validate_password_strength(v)
+
 
 class ResetPasswordRequest(BaseModel):
     old_password: str = Field(..., min_length=6, max_length=20)
     new_password: str = Field(..., min_length=6, max_length=20)
     confirm_password: str = Field(..., min_length=6, max_length=20)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        return _validate_password_strength(v)
 
 
 class UserUpdateRequest(BaseModel):

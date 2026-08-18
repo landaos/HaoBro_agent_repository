@@ -31,5 +31,3 @@ logs/
 .idea/
 *.swp
 
-# ── 临时文件 ──
-test_import_out.txt
